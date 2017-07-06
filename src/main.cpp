@@ -79,7 +79,7 @@ void transformCoordSys(const std::vector<double>& xvals, const std::vector<doubl
   }
 }
 
-double cteNewton(Eigen::VectorXd coeffs, unsigned int iters) {
+std::vector<double> cteNewton(Eigen::VectorXd coeffs, unsigned int iters) {
   double x = coeffs[0];
   double n, d, f, fp, fpp;
 
@@ -98,7 +98,8 @@ double cteNewton(Eigen::VectorXd coeffs, unsigned int iters) {
   }
   f = polyeval(coeffs, x);
   double distance = sqrt(f*f + x*x);
-  return (coeffs[0] > 0) ? distance : -distance;
+  double psides = polyeval(f_p, x);
+  return {(coeffs[0] > 0) ? distance : -distance, -atan(psides)};
 }
 
 
@@ -138,30 +139,13 @@ int main() {
           *
           */
 
-          // Predict the future state after 100ms due to latency.
-          double lt = 0.05;
-          if (abs(st) < eps) {
-            double update = (v + .5*a*lt)*lt;
-            px += update * cos(psi);
-            py += update * sin(psi);
-          } else {
-            double c1 = cos(psi + st*lt);
-            double s1 = sin(psi + st*lt);
-            double c0 = cos(psi);
-            double s0 = sin(psi);
-
-            px += (((c1 - c0)/st + lt*s1)*a + v*(s1 - s0))/st;
-            py += (((s1 - s0)/st - lt*c1)*a + v*(c0 - c1))/st;
-            psi += st*lt;
-          }
-
-
           // Transform the reference points into vehicle's coordinate system.
           std::vector<double> xTrans, yTrans;
           xTrans.resize(ptsx.size(), 0);
           yTrans.resize(ptsy.size(), 0);
           transformCoordSys(ptsx, ptsy, xTrans, yTrans, px, py, psi);
 
+          std::cout << ptsx.size() << ", " << ptsy.size() << std::endl;
           // Solve for the fitting polynomial to the reference points.
           Eigen::VectorXd xvals = Eigen::Map<Eigen::VectorXd>(xTrans.data(), xTrans.size());
           Eigen::VectorXd yvals = Eigen::Map<Eigen::VectorXd>(yTrans.data(), yTrans.size());
@@ -169,10 +153,18 @@ int main() {
 
           // Construct the state vector.
           // The CTE error is calculated using Newton's method with 5 iterations.
-          double cte = cteNewton(coeffs, 5);
-          double epsi = -atan(coeffs[1]);
+          std::vector<double> errors = cteNewton(coeffs, 5);
+          double cte = errors[0];
+          double epsi = errors[1];
           Eigen::VectorXd state(6);
-          state << 0, 0, 0, v, cte, epsi;
+          // Predict the future state after 100ms due to latency.
+          state[0] = v * cos(0) * 0.1;
+          state[1] = v * sin(0) * 0.1;
+          state[2] = (-v / 2.67) * st * 0.1;
+          state[3] = v + a * 0.1;
+          state[4] = cte + v*sin(epsi)*0.1;
+          state[5] = epsi - (v / 2.67) * st * 0.1;
+
 
           // Solve for the optimal actuations.
           auto result = mpc.Solve(state, coeffs);
@@ -186,7 +178,7 @@ int main() {
           msgJson["steering_angle"] = -steer_value/steerLimit();
           msgJson["throttle"] = throttle_value;
 
-          //Display the MPC predicted trajectory 
+          //Display the MPC predicted trajectory
           vector<double> mpc_x_vals;
           vector<double> mpc_y_vals;
 

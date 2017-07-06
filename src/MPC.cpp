@@ -34,7 +34,7 @@ size_t delta_start = epsi_start + N;
 size_t a_start = delta_start + N - 1;
 
 class FG_eval {
- public:
+public:
   // Fitted polynomial coefficients
   Eigen::VectorXd coeffs;
   FG_eval(Eigen::VectorXd coeffs) { this->coeffs = coeffs; }
@@ -53,27 +53,19 @@ class FG_eval {
       fg[0] += CppAD::pow(vars[cte_start + t], 2);
       fg[0] += CppAD::pow(vars[epsi_start + t], 2);
       fg[0] += CppAD::pow(vars[v_start + t] - ref_v, 2);
-      // Minimize the speed leaving the reference state
-      fg[0] += CppAD::pow(vars[v_start + t] * vars[epsi_start + t], 2);
     }
 
     // Minimize the use of actuators.
     for (int t = 0; t < N-1; ++t) {
-      fg[0] += 10*CppAD::pow(vars[delta_start + t], 2);
+      fg[0] += CppAD::pow(vars[delta_start + t], 2);
       fg[0] += 5*CppAD::pow(vars[a_start + t], 2);
     }
 
     // Minimize difference between consecutive actuations.
     for (int t = 0; t < N-2; ++t) {
-      fg[0] += 20*CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);
-      fg[0] += 5*CppAD::pow(vars[a_start + t + 1] - vars[a_start + t], 2);
+      fg[0] += 100*CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);
+      fg[0] += CppAD::pow(vars[a_start + t + 1] - vars[a_start + t], 2);
     }
-
-    // Minimize the acceleration away from the reference line.
-//    for (int t = 0; t < N-1; ++t) {
-//      fg[0] += CppAD::pow(vars[a_start + t] * sin(vars[epsi_start + t]), 2);
-//    }
-
 
     // Constraints
     // 1. Initial constraints
@@ -236,8 +228,8 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
 
   // solve the problem
   CppAD::ipopt::solve<Dvector, FG_eval>(
-      options, vars, vars_lowerbound, vars_upperbound, constraints_lowerbound,
-      constraints_upperbound, fg_eval, solution);
+          options, vars, vars_lowerbound, vars_upperbound, constraints_lowerbound,
+          constraints_upperbound, fg_eval, solution);
 
   // Check some of the solution values
   ok &= solution.status == CppAD::ipopt::solve_result<Dvector>::success;
